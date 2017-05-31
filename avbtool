@@ -1930,7 +1930,8 @@ class Avb(object):
                         setup_rootfs_from_kernel,
                         include_descriptors_from_image, signing_helper,
                         release_string,
-                        append_to_release_string):
+                        append_to_release_string,
+                        print_required_libavb_version):
     """Implements the 'make_vbmeta_image' command.
 
     Arguments:
@@ -1949,10 +1950,21 @@ class Avb(object):
       signing_helper: Program which signs a hash and return signature.
       release_string: None or avbtool release string to use instead of default.
       append_to_release_string: None or string to append.
+      print_required_libavb_version: True to only print required libavb version.
 
     Raises:
       AvbError: If a chained partition is malformed.
     """
+
+    # If we're asked to calculate minimum required libavb version, we're done.
+    #
+    # NOTE: When we get to 1.1 and later this will get more complicated.
+    if print_required_libavb_version:
+      print '1.0'
+      return
+
+    if not output:
+      raise AvbError('No output file given')
 
     descriptors = []
     vbmeta_blob = self._generate_vbmeta_blob(
@@ -2274,7 +2286,8 @@ class Avb(object):
                       setup_rootfs_from_kernel,
                       include_descriptors_from_image, signing_helper,
                       release_string, append_to_release_string,
-                      output_vbmeta_image, do_not_append_vbmeta_image):
+                      output_vbmeta_image, do_not_append_vbmeta_image,
+                      print_required_libavb_version):
     """Implementation of the add_hash_footer on unsparse images.
 
     Arguments:
@@ -2301,10 +2314,19 @@ class Avb(object):
       append_to_release_string: None or string to append.
       output_vbmeta_image: If not None, also write vbmeta struct to this file.
       do_not_append_vbmeta_image: If True, don't append vbmeta struct.
+      print_required_libavb_version: True to only print required libavb version.
 
     Raises:
       AvbError: If an argument is incorrect.
     """
+
+    # If we're asked to calculate minimum required libavb version, we're done.
+    #
+    # NOTE: When we get to 1.1 and later this will get more complicated.
+    if print_required_libavb_version:
+      print '1.0'
+      return
+
     image = ImageHandler(image_filename)
 
     if partition_size % image.block_size != 0:
@@ -2432,7 +2454,8 @@ class Avb(object):
                           include_descriptors_from_image,
                           calc_max_image_size, signing_helper,
                           release_string, append_to_release_string,
-                          output_vbmeta_image, do_not_append_vbmeta_image):
+                          output_vbmeta_image, do_not_append_vbmeta_image,
+                          print_required_libavb_version):
     """Implements the 'add_hashtree_footer' command.
 
     See https://gitlab.com/cryptsetup/cryptsetup/wikis/DMVerity for
@@ -2468,10 +2491,19 @@ class Avb(object):
       append_to_release_string: None or string to append.
       output_vbmeta_image: If not None, also write vbmeta struct to this file.
       do_not_append_vbmeta_image: If True, don't append vbmeta struct.
+      print_required_libavb_version: True to only print required libavb version.
 
     Raises:
       AvbError: If an argument is incorrect.
     """
+
+    # If we're asked to calculate minimum required libavb version, we're done.
+    #
+    # NOTE: When we get to 1.1 and later this will get more complicated.
+    if print_required_libavb_version:
+      print '1.0'
+      return
+
     digest_size = len(hashlib.new(name=hash_algorithm).digest())
     digest_padding = round_to_pow2(digest_size) - digest_size
 
@@ -2966,6 +2998,11 @@ class AvbTool(object):
                             metavar='IMAGE',
                             action='append',
                             type=argparse.FileType('rb'))
+    sub_parser.add_argument('--print_required_libavb_version',
+                            help=('Don\'t store the footer - '
+                                  'instead calculate the required libavb '
+                                  'version for the given options.'),
+                            action='store_true')
     # These are only allowed from top-level vbmeta and boot-in-lieu-of-vbmeta.
     sub_parser.add_argument('--chain_partition',
                             help='Allow signed integrity-data for partition',
@@ -3020,8 +3057,7 @@ class AvbTool(object):
                                        help='Makes a vbmeta image.')
     sub_parser.add_argument('--output',
                             help='Output file name',
-                            type=argparse.FileType('wb'),
-                            required=True)
+                            type=argparse.FileType('wb'))
     self._add_common_args(sub_parser)
     sub_parser.set_defaults(func=self.make_vbmeta_image)
 
@@ -3032,8 +3068,7 @@ class AvbTool(object):
                             type=argparse.FileType('rab+'))
     sub_parser.add_argument('--partition_size',
                             help='Partition size',
-                            type=parse_number,
-                            required=True)
+                            type=parse_number)
     sub_parser.add_argument('--partition_name',
                             help='Partition name',
                             required=True)
@@ -3073,8 +3108,7 @@ class AvbTool(object):
                             type=argparse.FileType('rab+'))
     sub_parser.add_argument('--partition_size',
                             help='Partition size',
-                            type=parse_number,
-                            required=True)
+                            type=parse_number)
     sub_parser.add_argument('--partition_name',
                             help='Partition name',
                             default=None)
@@ -3245,7 +3279,8 @@ class AvbTool(object):
                                args.include_descriptors_from_image,
                                args.signing_helper,
                                args.internal_release_string,
-                               args.append_to_release_string)
+                               args.append_to_release_string,
+                               args.print_required_libavb_version)
 
   def append_vbmeta_image(self, args):
     """Implements the 'append_vbmeta_image' sub-command."""
@@ -3268,7 +3303,8 @@ class AvbTool(object):
                              args.internal_release_string,
                              args.append_to_release_string,
                              args.output_vbmeta_image,
-                             args.do_not_append_vbmeta_image)
+                             args.do_not_append_vbmeta_image,
+                             args.print_required_libavb_version)
 
   def add_hashtree_footer(self, args):
     """Implements the 'add_hashtree_footer' sub-command."""
@@ -3289,7 +3325,8 @@ class AvbTool(object):
                                  args.internal_release_string,
                                  args.append_to_release_string,
                                  args.output_vbmeta_image,
-                                 args.do_not_append_vbmeta_image)
+                                 args.do_not_append_vbmeta_image,
+                                 args.print_required_libavb_version)
 
   def erase_footer(self, args):
     """Implements the 'erase_footer' sub-command."""
