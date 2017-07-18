@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #
-# Copyright (C) 2016 The Android Open Source Project
+# Copyright (C) 2017 The Android Open Source Project
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
@@ -24,30 +24,27 @@
 # SOFTWARE.
 #
 
-# This shell-script checks the symbols in libavb.a and fails
-# if a reference not starting with avb_ is referenced. It's intended
-# to catch mistakes where the standard C library is inadvertently
-# used.
-
 import subprocess
 import sys
 import errno
 import os
 
-def rsa_signer(argv):
-  if len(argv) != 3:
-    sys.stderr.write("Wrong number of arguments: {} <alg> <pub key>\n".format(argv[0]))
+def rsa_signer_with_files(argv):
+  if len(argv) != 4:
+    sys.stderr.write("Wrong number of arguments: {} <alg> <pub key> <file>\n".format(argv[0]))
     return errno.EINVAL
 
-  data = sys.stdin.read()
+  signing_file = open(argv[3], mode='rw+')
+  data = signing_file.read()
   if len(data) == 0:
-    sys.stderr.write("There is not input data\n")
+    sys.stderr.write("There is no input data\n")
     return errno.EINVAL
 
   if os.environ.get('SIGNING_HELPER_GENERATE_WRONG_SIGNATURE'):
     # We're only called with this algorithm which signature size is 256.
-    assert sys.argv[1] == 'SHA256_RSA2048'
-    sys.stdout.write('X'*256)
+    assert argv[1] == 'SHA256_RSA2048'
+    signing_file.seek(0)
+    signing_file.write('X'*256)
     return 0
 
   if 'SIGNING_HELPER_TEST' not in os.environ or os.environ['SIGNING_HELPER_TEST'] == "":
@@ -61,12 +58,15 @@ def rsa_signer(argv):
 
   p = subprocess.Popen(
       ['openssl', 'rsautl', '-sign', '-inkey', argv[2], '-raw'],
-      stdin=subprocess.PIPE)
+      stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
-  p.communicate(data)
+  (pout, _) = p.communicate(data)
   retcode = p.wait()
   if retcode != 0:
     return retcode
+
+  signing_file.seek(0)
+  signing_file.write(pout)
 
   with open(test_file_name, "w") as f:
     f.write("DONE")
@@ -74,4 +74,4 @@ def rsa_signer(argv):
   return 0
 
 if __name__ == '__main__':
-    sys.exit(rsa_signer(sys.argv))
+  sys.exit(rsa_signer_with_files(sys.argv))
