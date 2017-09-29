@@ -1977,6 +1977,14 @@ class Avb(object):
     # Write entire vbmeta blob (header, authentication, auxiliary).
     output.seek(0)
     output.write(vbmeta_blob)
+    vbmeta_blob_size = len(vbmeta_blob)
+    pad_size = 0
+    if vbmeta_blob_size <= 4096:
+      pad_size += 4096
+    vbs_with_padding = round_to_multiple(vbmeta_blob_size + pad_size, 4096)
+    if (vbs_with_padding - vbmeta_blob_size):
+      zeroes = "\0" * (vbs_with_padding - vbmeta_blob_size)
+      output.write(zeroes)
 
   def _generate_vbmeta_blob(self, algorithm_name, key_path,
                             public_key_metadata_path, descriptors,
