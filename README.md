@@ -192,7 +192,9 @@ Unit tests **MUST** be added to check that
 * The feature is used if - and only if - suitable commands/options are
   passed to `avbtool`.
 * The `required_version_minor` field is set to the bumped value if -
-  and only if - the feature is used.
+  and only if - the feature is used. Also add tests to check that the
+  correct value is output when `--print_required_libavb_version` is
+  used.
 
 If `AVB_VERSION_MINOR` has already been bumped since the last release
 there is obviously no need to bump it again.
@@ -202,21 +204,22 @@ there is obviously no need to bump it again.
 The content for the vbmeta partition can be generated as follows:
 
     $ avbtool make_vbmeta_image                                                    \
-        --output OUTPUT                                                            \
+        [--output OUTPUT]                                                          \
         [--algorithm ALGORITHM] [--key /path/to/key_used_for_signing_or_pub_key]   \
         [--public_key_metadata /path/to/pkmd.bin] [--rollback_index NUMBER]        \
         [--include_descriptors_from_footer /path/to/image.bin]                     \
         [--setup_rootfs_from_kernel /path/to/image.bin]                            \
         [--chain_partition part_name:rollback_index_location:/path/to/key1.bin]    \
         [--signing_helper /path/to/external/signer]                                \
+        [--print_required_libavb_version]                                          \
         [--append_to_release_string STR]
 
 An integrity footer containing the hash for an entire partition can be
 added to an existing image as follows:
 
     $ avbtool add_hash_footer                                                      \
-        --image IMAGE                                                              \
         --partition_name PARTNAME --partition_size SIZE                            \
+        [--image IMAGE]                                                            \
         [--algorithm ALGORITHM] [--key /path/to/key_used_for_signing_or_pub_key]   \
         [--public_key_metadata /path/to/pkmd.bin] [--rollback_index NUMBER]        \
         [--hash_algorithm HASH_ALG] [--salt HEX]                                   \
@@ -224,15 +227,16 @@ added to an existing image as follows:
         [--setup_rootfs_from_kernel /path/to/image.bin]                            \
         [--output_vbmeta_image OUTPUT_IMAGE] [--do_not_append_vbmeta_image]        \
         [--signing_helper /path/to/external/signer]                                \
-        [--append_to_release_string STR]
+        [--print_required_libavb_version]                                          \
+        [--append_to_release_string STR]                                           \
 
 An integrity footer containing the root digest and salt for a hashtree
 for a partition can be added to an existing image as follows. The
 hashtree is also appended to the image.
 
     $ avbtool add_hashtree_footer                                                  \
-        --image IMAGE                                                              \
         --partition_name PARTNAME --partition_size SIZE                            \
+        [--image IMAGE]                                                            \
         [--algorithm ALGORITHM] [--key /path/to/key_used_for_signing_or_pub_key]   \
         [--public_key_metadata /path/to/pkmd.bin] [--rollback_index NUMBER]        \
         [--hash_algorithm HASH_ALG] [--salt HEX] [--block_size SIZE]               \
@@ -241,7 +245,8 @@ hashtree is also appended to the image.
         [--output_vbmeta_image OUTPUT_IMAGE] [--do_not_append_vbmeta_image]        \
         [--generate_fec] [--fec_num_roots FEC_NUM_ROOTS]                           \
         [--signing_helper /path/to/external/signer]                                \
-        [--append_to_release_string STR]
+        [--print_required_libavb_version]                                          \
+        [--append_to_release_string STR]                                           \
 
 The integrity footer on an image can be removed from an image. The
 hashtree can optionally be kept in place.
@@ -260,6 +265,18 @@ command on it, use the `--calc_max_image_size` option:
     $ avbtool add_hashtree_footer --partition_size $((10*1024*1024)) \
         --calc_max_image_size
     10330112
+
+To calculate the required libavb version that would be put in the
+vbmeta struct when using `make_vbmeta_image`, `add_hash_footer`, and
+`add_hashtree_footer` commands use the
+`--print_required_libavb_version` option:
+
+    $ avbtool make_vbmeta_image \
+        --algorithm SHA256_RSA2048 --key /path/to/key.pem \
+        --include_descriptors_from_image /path/to/boot.img \
+        --include_descriptors_from_image /path/to/system.img \
+        --print_required_libavb_version
+    1.0
 
 The `--signing_helper` option can be used in `make_vbmeta_image`,
 `add_hash_footer` and `add_hashtree_footer` commands to specify any
