@@ -59,35 +59,7 @@ void usage(FILE* where, int /* argc */, char* argv[]) {
           argv[0]);
 }
 
-/* Function to enable and disable dm-verity. The |ops| parameter
- * should be an |AvbOps| from libavb_user.
- */
-int do_set_verity(AvbOps* ops,
-                  const std::string& ab_suffix,
-                  bool enable_verity) {
-  bool verity_enabled;
 
-  if (!avb_user_verity_get(ops, ab_suffix.c_str(), &verity_enabled)) {
-    fprintf(stderr, "Error getting whether verity is enabled.\n");
-    return EX_SOFTWARE;
-  }
-
-  if ((verity_enabled && enable_verity) ||
-      (!verity_enabled && !enable_verity)) {
-    fprintf(stdout,
-            "verity is already %s",
-            verity_enabled ? "enabled" : "disabled");
-    if (ab_suffix != "") {
-      fprintf(stdout, " on slot with suffix %s", ab_suffix.c_str());
-    }
-    fprintf(stdout, ".\n");
-    return EX_OK;
-  }
-
-  if (!avb_user_verity_set(ops, ab_suffix.c_str(), enable_verity)) {
-    fprintf(stderr, "Error setting verity.\n");
-    return EX_SOFTWARE;
-  }
 /* Function to enable and disable verification. The |ops| parameter
  * should be an |AvbOps| from libavb_user.
  */
@@ -150,20 +122,6 @@ int do_get_verification(AvbOps* ops, const std::string& ab_suffix) {
   }
   fprintf(stdout, ".\n");
 
-  fprintf(
-      stdout, "Successfully %s verity", enable_verity ? "enabled" : "disabled");
-  if (ab_suffix != "") {
-    fprintf(stdout, " on slot with suffix %s", ab_suffix.c_str());
-  }
-  fprintf(stdout, ". Reboot the device for changes to take effect.\n");
-
-  return EX_OK;
-}
-
-/* Function to query if dm-verity is enabled. The |ops| parameter
- * should be an |AvbOps| from libavb_user.
- */
-int do_get_verity(AvbOps* ops, const std::string& ab_suffix) {
   return EX_OK;
 }
 
@@ -191,39 +149,12 @@ int do_set_verity(AvbOps* ops,
     fprintf(stdout, ".\n");
     return EX_OK;
   }
-}
+
 
   if (!avb_user_verity_set(ops, ab_suffix.c_str(), enable_verity)) {
     fprintf(stderr, "Error setting verity.\n");
     return EX_SOFTWARE;
   }
-  fprintf(stdout, ".\n");
-
-  return EX_OK;
-}
-
-//Fix me
-#if 0
-<<<<<<< HEAD
-/* Helper function to get A/B suffix, if any. If the device isn't
- * using A/B the empty string is returned. Otherwise either "_a",
- * "_b", ... is returned.
- *
- * Note that since sometime in O androidboot.slot_suffix is deprecated
- * and androidboot.slot should be used instead. Since bootloaders may
- * be out of sync with the OS, we check both and for extra safety
- * prepend a leading underscore if there isn't one already.
- */
-std::string get_ab_suffix() {
-  std::string ab_suffix = android::base::GetProperty("ro.boot.slot_suffix", "");
-  if (ab_suffix == "") {
-    ab_suffix = android::base::GetProperty("ro.boot.slot", "");
-  }
-  if (ab_suffix.size() > 0 && ab_suffix[0] != '_') {
-    ab_suffix = std::string("_") + ab_suffix;
-  }
-  return ab_suffix;
-=======
   fprintf(
       stdout, "Successfully %s verity", enable_verity ? "enabled" : "disabled");
   if (ab_suffix != "") {
@@ -233,6 +164,8 @@ std::string get_ab_suffix() {
 
   return EX_OK;
 }
+
+
 
 /* Function to query if dm-verity is enabled. The |ops| parameter
  * should be an |AvbOps| from libavb_user.
@@ -252,9 +185,7 @@ int do_get_verity(AvbOps* ops, const std::string& ab_suffix) {
   fprintf(stdout, ".\n");
 
   return EX_OK;
->>>>>>> 01d724ab7f418a546aa6951c6f78716caeb8b6ce
 }
-#endif
 
 /* Helper function to get A/B suffix, if any. If the device isn't
  * using A/B the empty string is returned. Otherwise either "_a",
