@@ -2459,6 +2459,63 @@ class Avb(object):
     data_size += h.auxiliary_data_block_size
     return image.read(data_size)
 
+  def _get_cmdline_descriptors_for_early_services_hashtree_descriptor(self, ht):
+    """Generate kernel cmdline descriptors for dm-verity.
+
+    Arguments:
+      ht: A AvbHashtreeDescriptor
+
+    Returns:
+      A list with two AvbKernelCmdlineDescriptor with dm-verity kernel cmdline
+      instructions. There is one for when hashtree is not disabled and one for
+      when it is.
+
+    """
+
+    c = 'dm1="1 vearly_userspace none ro 1,'
+    c += '0'  # start
+    c += ' {}'.format((ht.image_size / 512))  # size (# sectors)
+    c += ' verity {}'.format(ht.dm_verity_version)  # type and version
+    c += ' PARTUUID=$(ANDROID_EARLY_SERVICES_PARTUUID)'  # data_dev
+    c += ' PARTUUID=$(ANDROID_EARLY_SERVICES_PARTUUID)'  # hash_dev
+    c += ' {}'.format(ht.data_block_size)  # data_block
+    c += ' {}'.format(ht.hash_block_size)  # hash_block
+    c += ' {}'.format(ht.image_size / ht.data_block_size)  # #blocks
+    c += ' {}'.format(ht.image_size / ht.data_block_size)  # hash_offset
+    c += ' {}'.format(ht.hash_algorithm)  # hash_alg
+    c += ' {}'.format(str(ht.root_digest).encode('hex'))  # root_digest
+    c += ' {}'.format(str(ht.salt).encode('hex'))  # salt
+    if ht.fec_num_roots > 0:
+      c += ' 10'  # number of optional args
+      c += ' $(ANDROID_VERITY_MODE)'
+      c += ' ignore_zero_blocks'
+      c += ' use_fec_from_device PARTUUID=$(ANDROID_EARLY_SERVICES_PARTUUID)'
+      c += ' fec_roots {}'.format(ht.fec_num_roots)
+      # Note that fec_blocks is the size that FEC covers, *not* the
+      # size of the FEC data. Since we use FEC for everything up until
+      # the FEC data, it's the same as the offset.
+      c += ' fec_blocks {}'.format(ht.fec_offset/ht.data_block_size)
+      c += ' fec_start {}'.format(ht.fec_offset/ht.data_block_size)
+    else:
+      c += ' 2'  # number of optional args
+      c += ' $(ANDROID_VERITY_MODE)'
+      c += ' ignore_zero_blocks'
+    c += '" early_userspace=/dev/dm-0'
+     # Now that we have the command-line, generate the descriptor.
+    desc = AvbKernelCmdlineDescriptor()
+    desc.kernel_cmdline = c
+    desc.flags = (
+        AvbKernelCmdlineDescriptor.FLAGS_USE_ONLY_IF_HASHTREE_NOT_DISABLED)
+
+    # The descriptor for when hashtree verification is disabled is a lot
+    # simpler - we just set the root to the partition.
+    desc_no_ht = AvbKernelCmdlineDescriptor()
+    desc_no_ht.kernel_cmdline = 'early_userspace=PARTUUID=$(ANDROID_EARLY_SERVICES_PARTUUID)'
+    desc_no_ht.flags = (
+        AvbKernelCmdlineDescriptor.FLAGS_USE_ONLY_IF_HASHTREE_DISABLED)
+
+    return [desc, desc_no_ht]
+
   def _get_cmdline_descriptors_for_hashtree_descriptor(self, ht):
     """Generate kernel cmdline descriptors for dm-verity.
 
@@ -2746,8 +2803,12 @@ class Avb(object):
 
     # Add AvbKernelCmdline descriptor for dm-verity from desc, if requested.
     if ht_desc_to_setup:
-      cmdline_desc = self._get_cmdline_descriptors_for_hashtree_descriptor(
-          ht_desc_to_setup)
+      if ht_desc_to_setup.partition_name=="early_services":
+        cmdline_desc=self._get_cmdline_descriptors_for_early_services_hashtree_descriptor(
+            ht_desc_to_setup)
+      else:
+        cmdline_desc = self._get_cmdline_descriptors_for_hashtree_descriptor(
+            ht_desc_to_setup)
       encoded_descriptors.extend(cmdline_desc[0].encode())
       encoded_descriptors.extend(cmdline_desc[1].encode())
 
