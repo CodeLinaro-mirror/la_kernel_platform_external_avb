@@ -21,6 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+* Changes from Qualcomm Technologies, Inc. are provided under the following license:
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
+*/
 
 #ifndef AVB_USER_VERITY_H_
 #define AVB_USER_VERITY_H_
@@ -53,6 +58,13 @@ bool avb_user_verity_set(AvbOps* ops,
  * Returns |true| if the operation succeeded, otherwise |false|.
  */
 bool avb_user_verity_get(AvbOps* ops,
+                         const char* ab_suffix,
+                         bool* out_verity_enabled);
+
+bool avb_user_vm_verity_set(AvbOps* ops,
+                         const char* ab_suffix,
+                         bool enable_verity);
+bool avb_user_vm_verity_get(AvbOps* ops,
                          const char* ab_suffix,
                          bool* out_verity_enabled);
 
