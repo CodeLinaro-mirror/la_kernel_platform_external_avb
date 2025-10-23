@@ -21,6 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+* Changes from Qualcomm Technologies, Inc. are provided under the following license:
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
+*/
 
 #include "avb_user_verity.h"
 
@@ -186,6 +191,90 @@ bool avb_user_verity_set(AvbOps* ops,
   flags &= ~AVB_VBMETA_IMAGE_FLAGS_HASHTREE_DISABLED;
   if (!enable_verity) {
     flags |= AVB_VBMETA_IMAGE_FLAGS_HASHTREE_DISABLED;
+  }
+  header->flags = avb_htobe32(flags);
+
+  /* Write the header. */
+  io_res = ops->write_to_partition(ops,
+                                   partition_name,
+                                   vbmeta_offset,
+                                   AVB_VBMETA_IMAGE_HEADER_SIZE,
+                                   vbmeta_image);
+  if (io_res != AVB_IO_RESULT_OK) {
+    avb_error("Error writing to partition '", partition_name, "'\n");
+    goto out;
+  }
+
+  ret = true;
+
+out:
+  return ret;
+}
+
+bool avb_user_vm_verity_get(AvbOps* ops,
+                         const char* ab_suffix,
+                         bool* out_verity_enabled) {
+  uint8_t vbmeta_image[AVB_VBMETA_IMAGE_HEADER_SIZE]; /* 256 bytes. */
+  char partition_name[AVB_PART_NAME_MAX_SIZE];        /* 32 bytes. */
+  AvbVBMetaImageHeader* header;
+  uint32_t flags;
+  bool ret = false;
+
+  if (!load_top_level_vbmeta_header(
+          ops, ab_suffix, vbmeta_image, partition_name, NULL)) {
+    goto out;
+  }
+
+  if (avb_memcmp(vbmeta_image, AVB_MAGIC, AVB_MAGIC_LEN) != 0) {
+    avb_error("Data from '",
+              partition_name,
+              "' does not look like a vbmeta header.\n");
+    goto out;
+  }
+
+  /* Set/clear the HASHTREE_DISABLED bit, as requested. */
+  header = (AvbVBMetaImageHeader*)vbmeta_image;
+  flags = avb_be32toh(header->flags);
+
+  if (out_verity_enabled != NULL) {
+    *out_verity_enabled = !(flags & AVB_VBMETA_IMAGE_FLAGS_VM_VERIFICATION_DISABLED);
+  }
+
+  ret = true;
+
+out:
+  return ret;
+}
+
+bool avb_user_vm_verity_set(AvbOps* ops,
+                         const char* ab_suffix,
+                         bool enable_verity) {
+  uint8_t vbmeta_image[AVB_VBMETA_IMAGE_HEADER_SIZE]; /* 256 bytes. */
+  char partition_name[AVB_PART_NAME_MAX_SIZE];        /* 32 bytes. */
+  uint64_t vbmeta_offset;
+  AvbIOResult io_res;
+  AvbVBMetaImageHeader* header;
+  uint32_t flags;
+  bool ret = false;
+
+  if (!load_top_level_vbmeta_header(
+          ops, ab_suffix, vbmeta_image, partition_name, &vbmeta_offset)) {
+    goto out;
+  }
+
+  if (avb_memcmp(vbmeta_image, AVB_MAGIC, AVB_MAGIC_LEN) != 0) {
+    avb_error("Data from '",
+              partition_name,
+              "' does not look like a vbmeta header.\n");
+    goto out;
+  }
+
+  /* Set/clear the HASHTREE_DISABLED bit, as requested. */
+  header = (AvbVBMetaImageHeader*)vbmeta_image;
+  flags = avb_be32toh(header->flags);
+  flags &= ~AVB_VBMETA_IMAGE_FLAGS_VM_VERIFICATION_DISABLED;
+  if (!enable_verity) {
+    flags |= AVB_VBMETA_IMAGE_FLAGS_VM_VERIFICATION_DISABLED;
   }
   header->flags = avb_htobe32(flags);
 
