@@ -21,6 +21,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+* Changes from Qualcomm Technologies, Inc. are provided under the following license:
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+* SPDX-License-Identifier: BSD-3-Clause-Clear
+*/
 
 #if !defined(AVB_INSIDE_LIBAVB_H) && !defined(AVB_COMPILATION)
 #error "Never include this file directly, include libavb.h instead."
@@ -58,7 +63,8 @@ extern "C" {
  */
 typedef enum {
   AVB_VBMETA_IMAGE_FLAGS_HASHTREE_DISABLED = (1 << 0),
-  AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED = (1 << 1)
+  AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED = (1 << 1),
+  AVB_VBMETA_IMAGE_FLAGS_VM_VERIFICATION_DISABLED = (1 << 2)
 } AvbVBMetaImageFlags;
 
 /* Binary format for header of the vbmeta image.

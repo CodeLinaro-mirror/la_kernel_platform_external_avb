@@ -13,6 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+//
+// Changes from Qualcomm Technologies, Inc. are provided under the following license:
+// Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+// SPDX-License-Identifier: BSD-3-Clause-Clear
+//
 
 package {
     default_applicable_licenses: ["external_avb_license"],
@@ -260,6 +265,8 @@ cc_library_static {
         "avb_sources",
         "avb_crypto_ops_impl_boringssl",
     ],
+
+    ramdisk_available: true,
     recovery_available: true,
     header_libs: [
         "avb_headers",
