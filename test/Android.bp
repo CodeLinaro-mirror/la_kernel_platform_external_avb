@@ -33,6 +33,9 @@ python_test_host {
     libs: [
         "at_auth_unlock",
     ],
+    // test/at_auth_unlock_unittest.py imports Crypto.PublicKey.RSA (PyCrypto),
+    // which is not present in the Android source tree.
+    strict_deps: false,
     data: [
         "data/cert_pik_certificate.bin",
         "data/cert_puk_certificate.bin",
