@@ -168,6 +168,11 @@ AvbIOResult FakeAvbOps::get_preloaded_partition(
     return AVB_IO_RESULT_ERROR_NO_SUCH_PARTITION;
   }
 
+  auto err_it = get_preloaded_partition_errors_.find(partition);
+  if (err_it != get_preloaded_partition_errors_.end()) {
+    return err_it->second;
+  }
+
   std::map<std::string, std::pair<uint8_t*, size_t>>::iterator prealloc_it =
       preallocated_preloaded_partitions_.find(std::string(partition));
   if (prealloc_it != preallocated_preloaded_partitions_.end()) {
