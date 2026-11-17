@@ -4,4 +4,4 @@ samitolvanen@google.com
 
 tweek@google.com #{LAST_RESORT_SUGGESTION}
 zeuthen@google.com #{LAST_RESORT_SUGGESTION}
-include platform/system/core:/janitors/OWNERS #{LAST_RESORT_SUGGESTION}
+include platform/system/core:main:/janitors/OWNERS #{LAST_RESORT_SUGGESTION}
