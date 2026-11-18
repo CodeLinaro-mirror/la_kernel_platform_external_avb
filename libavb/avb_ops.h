@@ -145,8 +145,17 @@ struct AvbOps {
    * |read_from_partition| will be used as the fallback. This function is mainly
    * used for accessing the entire partition content to calculate its hash.
    *
-   * Preloaded partition data must outlive the lifespan of the
-   * |AvbSlotVerifyData| structure that |avb_slot_verify| outputs.
+   * It is also tried before |read_from_partition| when loading a vbmeta
+   * partition such as "vbmeta_a". For vbmeta partitions, |num_bytes| is the
+   * smaller of the partition size and 64 KiB (VBMETA_MAX_SIZE), so it can be
+   * less than the partition size. Libavb copies the vbmeta data, so the
+   * preloaded vbmeta buffer has no alignment or lifetime requirements; if fewer
+   * than |num_bytes| bytes are preloaded, |read_from_partition| is used
+   * instead.
+   *
+   * For non-vbmeta partitions, preloaded partition data must outlive the
+   * lifespan of the |AvbSlotVerifyData| structure that |avb_slot_verify|
+   * outputs.
    */
   AvbIOResult (*get_preloaded_partition)(AvbOps* ops,
                                          const char* partition,

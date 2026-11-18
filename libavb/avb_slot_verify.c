@@ -718,6 +718,8 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
    * to fallback on the `boot` partition.
    */
   if (io_ret != AVB_IO_RESULT_ERROR_NO_SUCH_PARTITION) {
+    bool vbmeta_preloaded = false;
+
     vbmeta_buf = avb_malloc(vbmeta_size);
     if (vbmeta_buf == NULL) {
       ret = AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
@@ -734,12 +736,46 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
                 "'.\n");
     }
 
-    io_ret = ops->read_from_partition(ops,
-                                      full_partition_name,
-                                      vbmeta_offset,
-                                      vbmeta_size,
-                                      vbmeta_buf,
-                                      &vbmeta_num_read);
+    /* For vbmeta partitions, try copying from a preloaded buffer if available.
+     * The footer and vbmeta of other partitions are always read from storage,
+     * since getting them from get_preloaded_partition() would mean asking for
+     * the whole partition.
+     */
+    if (!look_for_vbmeta_footer && ops->get_preloaded_partition != NULL) {
+      uint8_t* preloaded = NULL;
+      size_t num_preloaded = 0;
+
+      io_ret = ops->get_preloaded_partition(
+          ops, full_partition_name, vbmeta_size, &preloaded, &num_preloaded);
+      if (io_ret == AVB_IO_RESULT_ERROR_OOM) {
+        ret = AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
+        goto out;
+      } else if (io_ret != AVB_IO_RESULT_OK) {
+        avb_error(full_partition_name,
+                  ": Error loading preloaded vbmeta data.\n");
+        ret = AVB_SLOT_VERIFY_RESULT_ERROR_IO;
+        goto out;
+      }
+      if (preloaded != NULL) {
+        if (num_preloaded == vbmeta_size) {
+          avb_memcpy(vbmeta_buf, preloaded, vbmeta_size);
+          vbmeta_num_read = vbmeta_size;
+          vbmeta_preloaded = true;
+        } else {
+          avb_debug(full_partition_name,
+                    ": Preloaded data size does not match vbmeta size, "
+                    "reading from partition.\n");
+        }
+      }
+    }
+    if (!vbmeta_preloaded) {
+      io_ret = ops->read_from_partition(ops,
+                                        full_partition_name,
+                                        vbmeta_offset,
+                                        vbmeta_size,
+                                        vbmeta_buf,
+                                        &vbmeta_num_read);
+    }
   }
   if (io_ret == AVB_IO_RESULT_ERROR_OOM) {
     ret = AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
