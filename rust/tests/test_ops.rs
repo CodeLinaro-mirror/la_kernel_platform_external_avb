@@ -20,7 +20,11 @@ use avb::{
     cert_validate_vbmeta_public_key, CertOps, CertPermanentAttributes, IoError, IoResult, Ops,
     PublicKeyForPartitionInfo, SHA256_DIGEST_SIZE,
 };
-use std::{cmp::min, collections::HashMap, ffi::CStr};
+use std::{
+    cmp::min,
+    collections::{HashMap, HashSet},
+    ffi::CStr,
+};
 #[cfg(feature = "uuid")]
 use uuid::Uuid;
 
@@ -130,6 +134,9 @@ pub struct TestOps<'a> {
 
     /// Fake RNG values to provide, or `IoError` if there aren't enough.
     pub cert_fake_rng: Vec<u8>,
+
+    /// Partition names passed to `read_from_partition()`.
+    pub partitions_read: HashSet<String>,
 }
 
 impl<'a> TestOps<'a> {
@@ -227,6 +234,7 @@ impl Default for TestOps<'_> {
             cert_permanent_attributes_hash: None,
             cert_key_versions: HashMap::new(),
             cert_fake_rng: Vec::new(),
+            partitions_read: HashSet::new(),
         }
     }
 }
@@ -238,9 +246,11 @@ impl<'a> Ops<'a> for TestOps<'a> {
         offset: i64,
         buffer: &mut [u8],
     ) -> IoResult<usize> {
+        let partition = partition.to_str()?;
+        self.partitions_read.insert(partition.to_string());
         let contents = self
             .partitions
-            .get(partition.to_str()?)
+            .get(partition)
             .ok_or(IoError::NoSuchPartition)?
             .contents
             .as_slice();
