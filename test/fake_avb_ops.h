@@ -207,6 +207,11 @@ class FakeAvbOps : public FakeAvbOpsDelegate {
     hidden_partitions_ = partitions;
   }
 
+  void set_get_preloaded_partition_error(const std::string& partition,
+                                         AvbIOResult error) {
+    get_preloaded_partition_errors_[partition] = error;
+  }
+
   void enable_get_preloaded_partition();
 
   bool preload_partition(const std::string& partition,
@@ -322,6 +327,7 @@ class FakeAvbOps : public FakeAvbOpsDelegate {
   std::map<std::string, uint8_t*> preloaded_partitions_;
   std::map<std::string, std::pair<uint8_t*, size_t>>
       preallocated_preloaded_partitions_;
+  std::map<std::string, AvbIOResult> get_preloaded_partition_errors_;
   std::set<std::string> hidden_partitions_;
 
   std::map<std::string, std::string> stored_values_;

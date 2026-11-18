@@ -74,10 +74,13 @@ pub trait Ops<'a> {
     ///
     /// # Arguments
     /// * `partition`: partition name to read from.
-    /// * `num_bytes`: Number of bytes expected to read.
+    /// * `num_bytes`: Maximum number of bytes libavb will use from the preloaded partition.
+    ///   For vbmeta partitions this is the smaller of the partition size and 64 KiB, so it may
+    ///   be smaller than the partition size.
     ///
     /// # Returns
-    /// * A reference to the entire partition contents if the partition has been preloaded.
+    /// * A reference to the preloaded partition contents; returning the whole partition is fine
+    ///   since libavb uses at most `num_bytes`.
     /// * `Err<IoError::NotImplemented>` if the requested partition has not been preloaded;
     ///   verification will next attempt to load the partition via `read_from_partition()`.
     /// * Any other `Err<IoError>` if an error occurred; verification will exit immediately.
@@ -589,7 +592,7 @@ unsafe fn try_get_preloaded_partition(
                 // TODO: can we change the libavb API to take a const*?
                 contents.as_ptr() as *mut u8,
             );
-            ptr::write(out_num_bytes_preloaded, contents.len());
+            ptr::write(out_num_bytes_preloaded, contents.len().min(num_bytes));
         },
         // No-op if this partition is not preloaded, we've already reset the out variables to
         // indicate preloaded data is not available.

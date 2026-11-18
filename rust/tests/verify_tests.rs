@@ -180,6 +180,38 @@ fn preloaded_image_passes_verification() {
     assert!(partition_data.preloaded());
 }
 
+#[test]
+fn preloaded_vbmeta_larger_than_64kib_passes_without_reading() {
+    let mut ops = build_test_ops_one_image_one_vbmeta();
+    let expected_vbmeta = fs::read(TEST_VBMETA_PATH).unwrap();
+    let mut preloaded = expected_vbmeta.clone();
+    preloaded.resize(128 * 1024, 0);
+    ops.add_preloaded_partition("vbmeta", &preloaded);
+
+    let data = verify_one_image_one_vbmeta(&mut ops).unwrap();
+
+    assert_eq!(data.vbmeta_data()[0].data(), expected_vbmeta);
+    assert!(!ops.partitions_read.contains("vbmeta"));
+}
+
+#[test]
+fn preloaded_unaligned_vbmeta_passes_without_reading() {
+    let mut ops = build_test_ops_one_image_one_vbmeta();
+    let expected_vbmeta = fs::read(TEST_VBMETA_PATH).unwrap();
+    #[repr(C, align(8))]
+    struct AlignedBuf([u8; 8192]);
+    let mut storage = AlignedBuf([0u8; 8192]);
+    assert!(expected_vbmeta.len() < storage.0.len());
+    let buf = &mut storage.0[..expected_vbmeta.len() + 1];
+    buf[1..].copy_from_slice(&expected_vbmeta);
+    ops.add_preloaded_partition("vbmeta", &buf[1..]);
+
+    let data = verify_one_image_one_vbmeta(&mut ops).unwrap();
+
+    assert_eq!(data.vbmeta_data()[0].data(), expected_vbmeta);
+    assert!(!ops.partitions_read.contains("vbmeta"));
+}
+
 // When all images are loaded from disk (rather than preloaded), libavb allocates memory itself for
 // the data, so there is no shared ownership; the returned verification data owns the image data
 // and can hold onto it even after the `ops` goes away.

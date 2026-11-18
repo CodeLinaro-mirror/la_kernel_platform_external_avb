@@ -27,11 +27,27 @@
 #include <base/files/file_util.h>
 
 #include <iostream>
+#include <memory>
 
 #include "avb_unittest_util.h"
 #include "fake_avb_ops.h"
 
 namespace avb {
+
+namespace {
+
+struct SlotVerifyDataDeleter {
+  void operator()(AvbSlotVerifyData* data) const {
+    if (data != nullptr) {
+      avb_slot_verify_data_free(data);
+    }
+  }
+};
+
+using UniqueSlotVerifyData =
+    std::unique_ptr<AvbSlotVerifyData, SlotVerifyDataDeleter>;
+
+}  // namespace
 
 class AvbSlotVerifyTest : public BaseAvbToolTest,
                           public FakeAvbOpsDelegateWithDefaults {
@@ -213,6 +229,399 @@ TEST_F(AvbSlotVerifyTest, PreloadedEnabledButNotUsed) {
                             &slot_data));
   EXPECT_NE(nullptr, slot_data);
   avb_slot_verify_data_free(slot_data);
+}
+
+TEST_F(AvbSlotVerifyTest, VBMetaFromPreloadedPartition) {
+  GenerateVBMetaImage("vbmeta_a.img",
+                      "SHA256_RSA2048",
+                      0,
+                      "test/data/testkey_rsa2048.pem",
+                      "--internal_release_string \"\"");
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  ASSERT_TRUE(ops_.preload_preallocated_partition(
+      "vbmeta_a", vbmeta_image_.data(), vbmeta_image_.size()));
+
+  AvbSlotVerifyData* raw_slot_data = nullptr;
+  const char* requested_partitions[] = {"boot", NULL};
+  AvbSlotVerifyResult result =
+      avb_slot_verify(ops_.avb_ops(),
+                      requested_partitions,
+                      "_a",
+                      AVB_SLOT_VERIFY_FLAGS_NONE,
+                      AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                      &raw_slot_data);
+  UniqueSlotVerifyData slot_data(raw_slot_data);
+  ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_OK, result);
+  ASSERT_NE(nullptr, slot_data);
+  ASSERT_EQ(size_t(0), ops_.get_partition_names_read_from().count("vbmeta_a"));
+  ASSERT_EQ(size_t(1), slot_data->num_vbmeta_images);
+  ASSERT_NE(vbmeta_image_.data(), slot_data->vbmeta_images[0].vbmeta_data);
+  ASSERT_EQ(vbmeta_image_.size(), slot_data->vbmeta_images[0].vbmeta_size);
+  ASSERT_EQ(0,
+            memcmp(vbmeta_image_.data(),
+                   slot_data->vbmeta_images[0].vbmeta_data,
+                   vbmeta_image_.size()));
+}
+
+TEST_F(AvbSlotVerifyTest, VBMetaPreloadedPartitionTooSmallIsNotUsed) {
+  GenerateVBMetaImage("vbmeta_a.img",
+                      "SHA256_RSA2048",
+                      0,
+                      "test/data/testkey_rsa2048.pem",
+                      "--internal_release_string \"\"");
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  uint8_t preloaded[16] = {};
+  ASSERT_TRUE(ops_.preload_preallocated_partition(
+      "vbmeta_a", preloaded, sizeof(preloaded)));
+
+  AvbSlotVerifyData* raw_slot_data = nullptr;
+  const char* requested_partitions[] = {"boot", NULL};
+  AvbSlotVerifyResult result =
+      avb_slot_verify(ops_.avb_ops(),
+                      requested_partitions,
+                      "_a",
+                      AVB_SLOT_VERIFY_FLAGS_NONE,
+                      AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                      &raw_slot_data);
+  UniqueSlotVerifyData slot_data(raw_slot_data);
+  ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_OK, result);
+  ASSERT_NE(nullptr, slot_data);
+  ASSERT_EQ(size_t(1), ops_.get_partition_names_read_from().count("vbmeta_a"));
+  ASSERT_EQ(size_t(1), slot_data->num_vbmeta_images);
+  ASSERT_NE(preloaded, slot_data->vbmeta_images[0].vbmeta_data);
+  ASSERT_EQ(vbmeta_image_.size(), slot_data->vbmeta_images[0].vbmeta_size);
+  ASSERT_EQ(0,
+            memcmp(vbmeta_image_.data(),
+                   slot_data->vbmeta_images[0].vbmeta_data,
+                   vbmeta_image_.size()));
+}
+
+TEST_F(AvbSlotVerifyTest, VBMetaFromPreloadedPartitionCorrupted) {
+  GenerateVBMetaImage("vbmeta_a.img",
+                      "SHA256_RSA2048",
+                      0,
+                      "test/data/testkey_rsa2048.pem",
+                      "--internal_release_string \"\"");
+
+  std::vector<uint8_t> preloaded = vbmeta_image_;
+  preloaded.back() ^= 0xff;
+  const std::vector<uint8_t> expected_preloaded = preloaded;
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  ASSERT_TRUE(ops_.preload_preallocated_partition(
+      "vbmeta_a", preloaded.data(), preloaded.size()));
+
+  const char* requested_partitions[] = {"boot", NULL};
+  {
+    AvbSlotVerifyData* raw_slot_data = nullptr;
+    AvbSlotVerifyResult result =
+        avb_slot_verify(ops_.avb_ops(),
+                        requested_partitions,
+                        "_a",
+                        AVB_SLOT_VERIFY_FLAGS_NONE,
+                        AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                        &raw_slot_data);
+    UniqueSlotVerifyData slot_data(raw_slot_data);
+    ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_ERROR_VERIFICATION, result);
+    ASSERT_EQ(nullptr, slot_data);
+    ASSERT_EQ(size_t(0),
+              ops_.get_partition_names_read_from().count("vbmeta_a"));
+    ASSERT_EQ(expected_preloaded, preloaded);
+  }
+
+  {
+    AvbSlotVerifyData* raw_slot_data = nullptr;
+    AvbSlotVerifyResult result =
+        avb_slot_verify(ops_.avb_ops(),
+                        requested_partitions,
+                        "_a",
+                        AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR,
+                        AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                        &raw_slot_data);
+    UniqueSlotVerifyData slot_data(raw_slot_data);
+    ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_ERROR_VERIFICATION, result);
+    ASSERT_NE(nullptr, slot_data);
+    ASSERT_EQ(size_t(0),
+              ops_.get_partition_names_read_from().count("vbmeta_a"));
+    ASSERT_EQ(size_t(1), slot_data->num_vbmeta_images);
+    ASSERT_NE(AVB_VBMETA_VERIFY_RESULT_OK,
+              slot_data->vbmeta_images[0].verify_result);
+    ASSERT_NE(preloaded.data(), slot_data->vbmeta_images[0].vbmeta_data);
+    ASSERT_EQ(expected_preloaded, preloaded);
+  }
+}
+
+TEST_F(AvbSlotVerifyTest, ChainedVBMetaFromPreloadedPartition) {
+  size_t boot_partition_size = 16 * 1024 * 1024;
+  const size_t boot_image_size = 5 * 1024 * 1024;
+  std::string boot_path = GenerateImage("boot.img", boot_image_size);
+  std::filesystem::path other_vbmeta_path = testdir_ / "vbmeta_google.img";
+  const char* requested_partitions[] = {"boot", NULL};
+
+  ASSERT_COMMAND(0,
+                 "./avbtool.py add_hash_footer"
+                 " --image %s"
+                 " --rollback_index 12"
+                 " --partition_name boot"
+                 " --partition_size %zd"
+                 " --algorithm SHA256_RSA4096"
+                 " --key test/data/testkey_rsa4096.pem"
+                 " --salt deadbeef"
+                 " --internal_release_string \"\"",
+                 boot_path.c_str(),
+                 boot_partition_size);
+  ASSERT_COMMAND(0,
+                 "./avbtool.py extract_vbmeta_image"
+                 " --image %s"
+                 " --output %s",
+                 boot_path.c_str(),
+                 other_vbmeta_path.c_str());
+  ASSERT_COMMAND(0,
+                 "./avbtool.py erase_footer"
+                 " --image %s",
+                 boot_path.c_str());
+
+  std::filesystem::path pk_path = testdir_ / "testkey_rsa4096.avbpubkey";
+  ASSERT_COMMAND(
+      0,
+      "./avbtool.py extract_public_key --key test/data/testkey_rsa4096.pem"
+      " --output %s",
+      pk_path.c_str());
+
+  GenerateVBMetaImage(
+      "vbmeta.img",
+      "SHA256_RSA2048",
+      11,
+      "test/data/testkey_rsa2048.pem",
+      android::base::StringPrintf("--chain_partition vbmeta_google:1:%s"
+                                  " --internal_release_string \"\"",
+                                  pk_path.c_str()));
+
+  std::string other_vbmeta_str;
+  ASSERT_TRUE(android::base::ReadFileToString(other_vbmeta_path.string(),
+                                              &other_vbmeta_str));
+  std::vector<uint8_t> other_vbmeta(other_vbmeta_str.begin(),
+                                    other_vbmeta_str.end());
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  ASSERT_TRUE(ops_.preload_preallocated_partition(
+      "vbmeta_google", other_vbmeta.data(), other_vbmeta.size()));
+
+  AvbSlotVerifyData* raw_slot_data = nullptr;
+  AvbSlotVerifyResult result =
+      avb_slot_verify(ops_.avb_ops(),
+                      requested_partitions,
+                      "",
+                      AVB_SLOT_VERIFY_FLAGS_NONE,
+                      AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                      &raw_slot_data);
+  UniqueSlotVerifyData slot_data(raw_slot_data);
+  ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_OK, result);
+  ASSERT_NE(nullptr, slot_data);
+  ASSERT_EQ(size_t(0),
+            ops_.get_partition_names_read_from().count("vbmeta_google"));
+  ASSERT_EQ(size_t(1), ops_.get_partition_names_read_from().count("vbmeta"));
+  ASSERT_EQ(size_t(1), ops_.get_partition_names_read_from().count("boot"));
+  ASSERT_EQ(size_t(2), slot_data->num_vbmeta_images);
+  ASSERT_EQ("vbmeta_google",
+            std::string(slot_data->vbmeta_images[1].partition_name));
+  ASSERT_NE(other_vbmeta.data(), slot_data->vbmeta_images[1].vbmeta_data);
+  ASSERT_EQ(other_vbmeta.size(), slot_data->vbmeta_images[1].vbmeta_size);
+  ASSERT_EQ(0,
+            memcmp(other_vbmeta.data(),
+                   slot_data->vbmeta_images[1].vbmeta_data,
+                   other_vbmeta.size()));
+}
+
+TEST_F(AvbSlotVerifyTest, ChainedFooterPartitionStillReadFromStorage) {
+  size_t boot_partition_size = 16 * 1024 * 1024;
+  const size_t boot_image_size = 5 * 1024 * 1024;
+  std::string boot_path = GenerateImage("boot.img", boot_image_size);
+  const char* requested_partitions[] = {"boot", NULL};
+
+  ASSERT_COMMAND(0,
+                 "./avbtool.py add_hash_footer"
+                 " --image %s"
+                 " --rollback_index 12"
+                 " --partition_name boot"
+                 " --partition_size %zd"
+                 " --algorithm SHA256_RSA4096"
+                 " --key test/data/testkey_rsa4096.pem"
+                 " --salt deadbeef"
+                 " --internal_release_string \"\"",
+                 boot_path.c_str(),
+                 boot_partition_size);
+
+  std::filesystem::path pk_path = testdir_ / "testkey_rsa4096.avbpubkey";
+  ASSERT_COMMAND(
+      0,
+      "./avbtool.py extract_public_key --key test/data/testkey_rsa4096.pem"
+      " --output %s",
+      pk_path.c_str());
+
+  GenerateVBMetaImage(
+      "vbmeta.img",
+      "SHA256_RSA2048",
+      11,
+      "test/data/testkey_rsa2048.pem",
+      android::base::StringPrintf("--chain_partition boot:1:%s"
+                                  " --internal_release_string \"\"",
+                                  pk_path.c_str()));
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  ASSERT_TRUE(ops_.preload_preallocated_partition(
+      "vbmeta", vbmeta_image_.data(), vbmeta_image_.size()));
+  ASSERT_TRUE(ops_.preload_partition("boot", base::FilePath(boot_path)));
+
+  AvbSlotVerifyData* raw_slot_data = nullptr;
+  AvbSlotVerifyResult result =
+      avb_slot_verify(ops_.avb_ops(),
+                      requested_partitions,
+                      "",
+                      AVB_SLOT_VERIFY_FLAGS_NONE,
+                      AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                      &raw_slot_data);
+  UniqueSlotVerifyData slot_data(raw_slot_data);
+  ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_OK, result);
+  ASSERT_NE(nullptr, slot_data);
+  ASSERT_EQ(size_t(0), ops_.get_partition_names_read_from().count("vbmeta"));
+  ASSERT_EQ(size_t(1), ops_.get_partition_names_read_from().count("boot"));
+  ASSERT_EQ(size_t(2), slot_data->num_vbmeta_images);
+  ASSERT_EQ("boot", std::string(slot_data->vbmeta_images[1].partition_name));
+  ASSERT_EQ(size_t(1), slot_data->num_loaded_partitions);
+  ASSERT_TRUE(slot_data->loaded_partitions[0].preloaded);
+}
+
+TEST_F(AvbSlotVerifyTest, VBMetaFromPreloadedPartitionLargerThan64KiB) {
+  GenerateVBMetaImage("vbmeta_a.img",
+                      "SHA256_RSA2048",
+                      0,
+                      "test/data/testkey_rsa2048.pem",
+                      "--internal_release_string \"\"");
+
+  const size_t kPaddedSize = 1024 * 1024;
+  std::filesystem::resize_file(vbmeta_image_path_, kPaddedSize);
+  std::vector<uint8_t> preloaded = vbmeta_image_;
+  preloaded.resize(kPaddedSize, 0);
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  ASSERT_TRUE(ops_.preload_preallocated_partition(
+      "vbmeta_a", preloaded.data(), preloaded.size()));
+
+  AvbSlotVerifyData* raw_slot_data = nullptr;
+  const char* requested_partitions[] = {"boot", NULL};
+  AvbSlotVerifyResult result =
+      avb_slot_verify(ops_.avb_ops(),
+                      requested_partitions,
+                      "_a",
+                      AVB_SLOT_VERIFY_FLAGS_NONE,
+                      AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                      &raw_slot_data);
+  UniqueSlotVerifyData slot_data(raw_slot_data);
+  ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_OK, result);
+  ASSERT_NE(nullptr, slot_data);
+  ASSERT_EQ(size_t(0), ops_.get_partition_names_read_from().count("vbmeta_a"));
+  ASSERT_EQ(size_t(1), slot_data->num_vbmeta_images);
+  ASSERT_NE(preloaded.data(), slot_data->vbmeta_images[0].vbmeta_data);
+  ASSERT_EQ(vbmeta_image_.size(), slot_data->vbmeta_images[0].vbmeta_size);
+  ASSERT_EQ(0,
+            memcmp(vbmeta_image_.data(),
+                   slot_data->vbmeta_images[0].vbmeta_data,
+                   vbmeta_image_.size()));
+}
+
+TEST_F(AvbSlotVerifyTest, VBMetaFromUnalignedPreloadedPartition) {
+  GenerateVBMetaImage("vbmeta_a.img",
+                      "SHA256_RSA2048",
+                      0,
+                      "test/data/testkey_rsa2048.pem",
+                      "--internal_release_string \"\"");
+
+  std::vector<uint8_t> buf(vbmeta_image_.size() + 2, 0);
+  uint8_t* unaligned =
+      buf.data() + ((reinterpret_cast<uintptr_t>(buf.data()) % 2 == 0) ? 1 : 0);
+  ASSERT_NE(0U, reinterpret_cast<uintptr_t>(unaligned) % 2);
+  memcpy(unaligned, vbmeta_image_.data(), vbmeta_image_.size());
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  ASSERT_TRUE(ops_.preload_preallocated_partition(
+      "vbmeta_a", unaligned, vbmeta_image_.size()));
+
+  AvbSlotVerifyData* raw_slot_data = nullptr;
+  const char* requested_partitions[] = {"boot", NULL};
+  AvbSlotVerifyResult result =
+      avb_slot_verify(ops_.avb_ops(),
+                      requested_partitions,
+                      "_a",
+                      AVB_SLOT_VERIFY_FLAGS_NONE,
+                      AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                      &raw_slot_data);
+  UniqueSlotVerifyData slot_data(raw_slot_data);
+  ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_OK, result);
+  ASSERT_NE(nullptr, slot_data);
+  ASSERT_EQ(size_t(0), ops_.get_partition_names_read_from().count("vbmeta_a"));
+  ASSERT_EQ(size_t(1), slot_data->num_vbmeta_images);
+  ASSERT_NE(unaligned, slot_data->vbmeta_images[0].vbmeta_data);
+  ASSERT_EQ(vbmeta_image_.size(), slot_data->vbmeta_images[0].vbmeta_size);
+  ASSERT_EQ(0,
+            memcmp(vbmeta_image_.data(),
+                   slot_data->vbmeta_images[0].vbmeta_data,
+                   vbmeta_image_.size()));
+}
+
+TEST_F(AvbSlotVerifyTest, VBMetaPreloadedPartitionErrors) {
+  GenerateVBMetaImage("vbmeta_a.img",
+                      "SHA256_RSA2048",
+                      0,
+                      "test/data/testkey_rsa2048.pem",
+                      "--internal_release_string \"\"");
+
+  ops_.set_expected_public_key(PublicKeyAVB("test/data/testkey_rsa2048.pem"));
+  ops_.enable_get_preloaded_partition();
+  const char* requested_partitions[] = {"boot", NULL};
+
+  {
+    ops_.set_get_preloaded_partition_error("vbmeta_a", AVB_IO_RESULT_ERROR_OOM);
+    AvbSlotVerifyData* raw_slot_data = nullptr;
+    AvbSlotVerifyResult result =
+        avb_slot_verify(ops_.avb_ops(),
+                        requested_partitions,
+                        "_a",
+                        AVB_SLOT_VERIFY_FLAGS_NONE,
+                        AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                        &raw_slot_data);
+    UniqueSlotVerifyData slot_data(raw_slot_data);
+    ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_ERROR_OOM, result);
+    ASSERT_EQ(nullptr, slot_data);
+    ASSERT_EQ(size_t(0),
+              ops_.get_partition_names_read_from().count("vbmeta_a"));
+  }
+
+  {
+    ops_.set_get_preloaded_partition_error("vbmeta_a", AVB_IO_RESULT_ERROR_IO);
+    AvbSlotVerifyData* raw_slot_data = nullptr;
+    AvbSlotVerifyResult result =
+        avb_slot_verify(ops_.avb_ops(),
+                        requested_partitions,
+                        "_a",
+                        AVB_SLOT_VERIFY_FLAGS_NONE,
+                        AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE,
+                        &raw_slot_data);
+    UniqueSlotVerifyData slot_data(raw_slot_data);
+    ASSERT_EQ(AVB_SLOT_VERIFY_RESULT_ERROR_IO, result);
+    ASSERT_EQ(nullptr, slot_data);
+    ASSERT_EQ(size_t(0),
+              ops_.get_partition_names_read_from().count("vbmeta_a"));
+  }
 }
 
 TEST_F(AvbSlotVerifyTest, SlotDataIsCorrect) {
