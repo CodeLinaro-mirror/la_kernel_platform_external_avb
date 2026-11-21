@@ -221,14 +221,14 @@ TEST_F(VerifyTest, BlockSizesMultipleOf64) {
   AvbVBMetaImageHeader backup = *h;
 
   h->authentication_data_block_size =
-      htobe32(be32toh(h->authentication_data_block_size) - 32);
+      htobe64(be64toh(h->authentication_data_block_size) - 32);
   EXPECT_EQ(AVB_VBMETA_VERIFY_RESULT_INVALID_VBMETA_HEADER,
             avb_vbmeta_image_verify(
                 vbmeta_image_.data(), vbmeta_image_.size() - 32, NULL, NULL));
   *h = backup;
 
   h->auxiliary_data_block_size =
-      htobe32(be32toh(h->auxiliary_data_block_size) - 32);
+      htobe64(be64toh(h->auxiliary_data_block_size) - 32);
   EXPECT_EQ(AVB_VBMETA_VERIFY_RESULT_INVALID_VBMETA_HEADER,
             avb_vbmeta_image_verify(
                 vbmeta_image_.data(), vbmeta_image_.size() - 32, NULL, NULL));
