@@ -16,6 +16,7 @@
 
 package {
     default_applicable_licenses: ["external_avb_license"],
+    default_team: "trendy_team_android_hardware_backed_security",
 }
 
 // Added automatically by a large-scale-change that took the approach of
