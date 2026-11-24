@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_android_bootloader",
+}
+
 // Rust bindgen wrappers to allow calling into libavb from Rust.
 //
 // The auto-generated wrappers are Rust unsafe and somewhat difficult to work
